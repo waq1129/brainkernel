@@ -162,13 +162,12 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
         xl_min = -30
     else:
         xlenlist = np.linspace(-5,3,60)
-        ll = []
+        lls = []
         for xl in xlenlist:
-            mses = runC(xl, ld_flag)
-            print('xl',xl,' mses', mses,flush=True)
-            ll += [mses]
-        xl_min = xlenlist[np.argmin(ll)]
-        #plt.plot(xlenlist, ll)
+            nll = runC(xl, ld_flag)
+            print('xl',xl,' nll', nll,flush=True)
+            lls += [nll]
+        xl_min = xlenlist[np.argmin(lls)]
 
 
     x_len = xl_min
@@ -183,9 +182,9 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
     kinv = np.linalg.inv(K+ep*np.eye(K.shape[0]))
     Kinv = torch.tensor(kinv).float()
 
-    def test_mse(S_cf, train_arr, test_arr, X_test_train_arr, X_test_test_arr):
-        cov_mses = []
-        x_mses = []
+    def test_r2(S_cf, train_arr, test_arr, X_test_train_arr, X_test_test_arr):
+        cov_r2s = []
+        x_r2s = []
 
         for trainid, testid, X_test_train, X_test_test in zip(train_arr, test_arr, X_test_train_arr, X_test_test_arr):
             X_test_train_ten = torch.tensor(X_test_train).float()
@@ -205,16 +204,16 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
             Xr = Winv_test.dot(S_test_test)
             Cxr = Xr.T.dot(Xr)
 
-            cov_mse = r2_score(Cx_test, Cxr)
-            x_mse = r2_score(X_test_test, Xr)
+            cov_r2 = r2_score(Cx_test, Cxr)
+            x_r2 = r2_score(X_test_test, Xr)
 
-            cov_mses += [cov_mse]
-            x_mses += [x_mse]
+            cov_r2s += [cov_r2]
+            x_r2s += [x_r2]
 
-        print('cov_mses: ', cov_mses, flush=True)
-        cov_mse = np.mean(cov_mses)
-        x_mse = np.mean(x_mses)
-        return cov_mse,x_mse
+        print('cov_r2s: ', cov_r2s, flush=True)
+        cov_r2 = np.mean(cov_r2s)
+        x_r2 = np.mean(x_r2s)
+        return cov_r2,x_r2
 
     def find_init_L(K,Cd,ep):
         kinv = np.linalg.inv(K+ep*np.eye(K.shape[0]))
@@ -277,11 +276,11 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
 
     t = time.perf_counter()
     ll_u = []
-    mses = []
-    mses_x = []
+    r2s = []
+    r2s_x = []
     epochs = 50
-    cov_mse = 0
-    x_mse = 0
+    cov_r2 = 0
+    x_r2 = 0
     for epoch in range(epochs):
         if epoch<20:
             loss_train = optimizer1.step(closure1)
@@ -296,27 +295,27 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
             L = model.L.detach().numpy()
             S = L.T
 
-            cov_mse, x_mse = test_mse(S, train_arr, test_arr, X_test_train_arr, X_test_test_arr)
+            cov_r2, x_r2 = test_r2(S, train_arr, test_arr, X_test_train_arr, X_test_test_arr)
             print('@@@@@@ NEW EPOCH', epoch, flush=True)
-            print('loss',ll.item(),l1.item(),l2.item(),l3.item(), '  ##cov_mse:', cov_mse, '  ##x_mse:', x_mse,flush=True)
+            print('loss',ll.item(),l1.item(),l2.item(),l3.item(), '  ##cov_r2:', cov_r2, '  ##x_r2:', x_r2,flush=True)
 
-            mses += [cov_mse]
-            mses_x += [x_mse]
+            r2s += [cov_r2]
+            r2s_x += [x_r2]
 
-    print('cov_mse:',cov_mse, '   x_mse:',x_mse, flush=True)
+    print('cov_r2:',cov_r2, '   x_r2:',x_r2, flush=True)
 
-    mses_smooth = []
+    r2s_smooth = []
     ws = 10
-    for i in range(ws,len(mses)):
-        mses_smooth += [np.mean(mses[i-ws:i])]
-    cov_mse = mses_smooth[-1]
+    for i in range(ws,len(r2s)):
+        r2s_smooth += [np.mean(r2s[i-ws:i])]
+    cov_r2 = r2s_smooth[-1]
     
-    mses_x_smooth = []
-    for i in range(ws,len(mses_x)):
-        mses_x_smooth += [np.mean(mses_x[i-ws:i])]
-    x_mse = mses_x_smooth[-1]
+    r2s_x_smooth = []
+    for i in range(ws,len(r2s_x)):
+        r2s_x_smooth += [np.mean(r2s_x[i-ws:i])]
+    x_r2 = r2s_x_smooth[-1]
         
-    return cov_mse, x_mse, x_len
+    return cov_r2, x_r2, x_len
 
 dataset = 'hcp' 
 taskname = 'WM' # working memory task
@@ -331,8 +330,8 @@ rflag = 0 # randomness
 
 print('taskname: ', taskname, ' method: ', method, ' rid: ', rid, ' nf: ', nf, ' ld_flag: ', ld_flag, ' nfold: ', nfold, ' rflag: ', rflag, ' subid: ', subid, flush=True)
 
-mses = run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid)
-cov_mse, x_mse, x_len = mses[0], mses[1], mses[2] # cov_mse: mse between test sample cov and predicted cov; x_mse: mse between test x and predicted x
+r2s = run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid)
+cov_r2, x_r2, x_len = r2s[0], r2s[1], r2s[2] # cov_r2: r2 between test sample cov and predicted cov; x_r2: r2 between test x and predicted x
 
 
 
