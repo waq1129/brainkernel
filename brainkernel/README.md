@@ -1,0 +1,1 @@
+Run generate_brainkernel.m to generate a brain kernel (brainkernel_prior.mat) using the resting-state fMRI in HCP. It takes a long time to run and requires 10G+ space to store intermediate variables. 

@@ -1,0 +1,1 @@
+Brain decoding demo ``brain_decoding_demo.m``: run a binary classification task on the working memory task fMRI from HCP. The demo runs for one binary pair for subject 100307 and returns the accuracy performance comparing among ridge, se (squared exponential) and bk (brain kernel).
