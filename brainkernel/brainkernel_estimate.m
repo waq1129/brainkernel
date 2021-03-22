@@ -35,7 +35,7 @@ lr = 1;
 
 % define the block coordinate
 nblock = 2;
-pidcell = gen_pid(1,xgrid,nx,nc,nblock);
+pidcell = gen_pid(1,xgrid,nx,nc,nblock, max_unit);
 if length(pidcell)==1, init_le_flag = 0; end
 
 % intialize parameters
@@ -56,19 +56,18 @@ pgphyp_min = 0;
 % initial KpriorInv
 len_k = pgphyp_new;
 rho_k = 0;
-Kfprior = covSEiso([-len_k/2;rho_k/2], xgrid);
-[uu,ss] = svd(Kfprior);
-ssinv = diag(1./(diag(ss)+nn));
-KpriorInv = uu*ssinv*uu';
+
+Y_nsamp = Y/sqrt(nsamp-1);
 
 %% optimization
 for iter = 1:niter
-    iter 
+    iter
     ds(end)
     fall_old = fall;
     ll = mod(iter,length(pidcell)); if ll==0, ll=length(pidcell); end
     pid = pidcell{ll};
     np = length(pid);
+    npid = 1:nx; npid(pid) = [];
     
     % initialization
     [Kinv11, Kinv21] = return_Kinv_block(len_k,xgrid,pid,large_flag,sp_flag,max_unit);
@@ -98,12 +97,13 @@ for iter = 1:niter
             % change_flag = 1;
         end
     end
+    Ccovblockpp = Y_nsamp(pid,:)*Y_nsamp(pid,:)';
+    Ccovblockpn = Y_nsamp(pid,:)*Y_nsamp(npid,:)';
     
-    % construct the objective function for optimizing latent
     if se_flag
-        npid = 1:nx; npid(pid) = [];
-        S1 = Ccov(pid,pid)-nsevar_est*eye(length(pid));
-        S2 = Ccov(npid,pid);
+        % PLS
+        S1 = Ccovblockpp-nsevar_est*eye(length(pid));
+        S2 = Ccovblockpn';
         optid = [1,alpha_flag,0,0];
         [ppinit,input_var] = input_var_pack(pp0,palpha_new,hyp,pgphyp_new,optid);
         lfunc = @(pp) compNegEmbeddedGPlogLi_gplvm_bcg_se_large(pp,input_var,pid,fall_old,nf,xgrid,kernelfun,lambda,Kinv11,Kinv21,S1,S2,nsamp);
@@ -116,26 +116,22 @@ for iter = 1:niter
             palphas = [palphas; palpha_new(:)'];
         end
     else
+        % MAP
         k_rbf = kernelfun([-hyp(1)/2;hyp(2)/2], fall_old+fmu);
         K_uu = k_rbf+diag(nsevar);
         [Ainv, U] = pdinv(K_uu);
-        optid = [1,alpha_flag,0,0];
+        optid = [1,0,0,0];
         [ppinit,input_var] = input_var_pack(pp0,palpha_new,hyp,pgphyp_new,optid);
         lfunc = @(pp) compNegEmbeddedGPlogLi_gplvm_bcg_delta_large(pp,input_var,pid,fall_old,nf,Ccov,nsamp,Ainv,xgrid,kernelfun,lambda,Kinv11,Kinv21);
         %DerivCheck(lfunc,ppinit)
         [ppnew,fval] = minFunc(lfunc,ppinit,options);
         [~,~,fopt] = lfunc(ppnew);
-        if alpha_flag
-            [~,palpha_new,~,~,~] = input_var_unpack(ppnew,input_var,nc,nf,np);
-            fmu = xgrid*reshape(palpha_new,nc,[]);
-            palphas = [palphas; palpha_new(:)'];
-        end
     end
     fopt = reshape(fopt,[],nf);
     fall(pid,:) = fopt;
     
     %%%%%%%%%%%%%%%%
-    % learn len_k: lengthscale in kernel
+    % learn len_k
     if len_flag
         pf1 = fall;
         palpha1 = palpha_new;
@@ -166,6 +162,7 @@ for iter = 1:niter
             BB22_2 = BB22*BB22';
             
             dL1_B = sum(Bf1.*Bf1,2)+2*sum(Bf1.*Bf2,2)+sum(Bf2.*Bf2,2);
+            % lfunc_gphyp = @(pp) compNegEmbeddedGPlogLi_gplvm_se_len_sp_B3(pp,input_var,nf,xgrid,l_bound,BB11_2,BB22_2,Bf1,Bf2,wwnrm,large_flag);
             lfunc_gphyp = @(pp) compNegEmbeddedGPlogLi_gplvm_se_len_sp_B1(pp,input_var,nf,xgrid,l_bound,Binvf1,Binvf2,Bf1,Bf2,wwnrm,dL1_B,large_flag);
             %DerivCheck(lfunc_gphyp,pgphyp0)
         else
@@ -180,24 +177,20 @@ for iter = 1:niter
         
         len_k = pgphyp_new; % marginal variance
         rho_k = 0;
-        Kfprior = covSEiso([-len_k/2;rho_k/2], xgrid);
-        [uu,ss] = svd(Kfprior);
-        ssinv = diag(1./(diag(ss)+nn));
-        KpriorInv = uu*ssinv*uu';
-        %subplot(224);imagesc(Kfprior),colorbar,axis image,title([exp(-pgphyp1/2) exp(-len_k/2)]),drawnow
     end
     %%%%%%%%%%%%%%%%
     
-    C_bk = kernelfun([-hyp(1)/2;hyp(2)/2], fall+fmu);
-    %subplot(221),imagesc(C_bk),axis image,colorbar,drawnow,title(['Cmat:' num2str(matrix_mse(Cmat-C_bk)) ' Ccov:' num2str(matrix_mse(Ccov-C_bk)) ' iter: ' num2str(iter) ' gap:' num2str(pid(1)) '-' num2str(pid(end))]);
-    %subplot(222),imagesc(Cmat),axis image,colorbar,drawnow,title('true covariance')
-    %subplot(223); plot([normcol(fsamp) normcol(fall+fmu)]); title('f brain kernel'); axis tight; axis square;drawnow
+    C_bk = kernelfun([-hyp(1)/2;hyp(2)/2], fall(pid,:)+fmu(pid,:));
+    %subplot(221),imagesc(C_bk),axis image,colorbar,drawnow,title(['Cmat:' num2str(matrix_mse(Ccovblockpp-C_bk)) ' Ccov:' num2str(matrix_mse(Ccovblockpp-C_bk)) ' iter: ' num2str(iter) ' gap:' num2str(pid(1)) '-' num2str(pid(end))]);
+    %subplot(222),imagesc(Ccovblockpp),axis image,colorbar,drawnow,title('true covariance')
+    %subplot(223); plot([normcol(fall+fmu)]); title('f brain kernel'); axis tight; axis square;drawnow
     
-    C_alpha = kernelfun([-hyp(1)/2;hyp(2)/2], fmu);
+    C_alpha = kernelfun([-hyp(1)/2;hyp(2)/2], fmu(pid,:));
     %subplot(224),imagesc(C_alpha),axis image,colorbar,drawnow,title('current Kalpha, linear projection')
     
-    ds = [ds; matrix_mse(Cmat-C_bk)];
-    if min(ds)==matrix_mse(Cmat-C_bk)
+    ds = [ds; matrix_mse(Ccovblockpp-C_bk)+2*matrix_mse(Ccovblockpn ...
+        -kernelfun([-hyp(1)/2;hyp(2)/2], fall(pid,:)+fmu(pid,:),fall(npid,:)+fmu(npid,:),0,1))];
+    if min(ds)==ds(end)
         fall_min = fall;
         palpha_min = palpha_new;
         pgphyp_min = pgphyp_new;
@@ -210,8 +203,11 @@ for iter = 1:niter
         %         se_flag = 0;
         %         init_le_flag = 0;
         %         rescale_flag = 1;
-        %         alpha_flag = 0;
-        %         len_flag = 0;
+        alpha_flag = 0;
+        len_flag = 0;
+    end
+    if mod(iter,10)==0
+        %    save([nname '_' num2str(max_unit1) '_midresult' num2str(iter) '.mat'],'-v7.3')
     end
     if 0%abs(ds(end)-ds(end-1))<1e-2 %& change_flag
         break;
@@ -232,7 +228,9 @@ hyps.alpha = reshape(palpha_new,nc,[]);
 %% collect and save to mat
 hyp = hyps;
 F = fall+fmu; % the latent to construct the brain kernel covariance function
-alpha = palpha_new; % the linear mapping for fmu
+alpha = hyps.alpha; % the linear mapping for fmu
+rho_k = hyps.rho_K;
+len_k = hyps.len_K;
 
 save('brainkernel_prior.mat','rho_k', 'alpha', 'F', 'fmu', 'hyp', 'len_k', 'nc', 'xgrid')
 

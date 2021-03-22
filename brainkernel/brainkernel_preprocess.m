@@ -11,9 +11,6 @@ nf = 20;
 
 % zscore fMRI data: 59412 voxels, 4800 eigenvectors
 Y = zscore(wholebrain')';
-Ccov = cov(Y');
-Cmat = Ccov;
-Cmat = Cmat/Cmat(1);
 fsamp = Y(:,1:nf);
 
 matrix_mse = @(x) sqrt(sum(vec(x.^2)));
@@ -168,5 +165,8 @@ if mflag
 else
     options = optimset('GradObj','off','display', 'off', 'largescale', 'off','maxiter',1e6,'maxfunevals',1e6);
 end
+
+%%
+clear wholebrain Y_nsamp
 
 save('brainkernel_pre','-v7.3')
