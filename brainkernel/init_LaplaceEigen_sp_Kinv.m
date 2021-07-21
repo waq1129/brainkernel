@@ -1,6 +1,6 @@
-function Y1_new = init_LaplaceEigen_sp_Kinv(Y,Y_nsamp,pid,rescale_flag,fmu,lambda,Kinv11,Kinv21)
+function Y1_new = init_LaplaceEigen_sp_Kinv(Y,Y_nsamp,pid,npid,rescale_flag,fmu,lambda,Kinv11,Kinv21)
 nx = size(Y_nsamp,1);
-npid = 1:nx; npid(pid) = [];
+% npid = 1:nx; npid(pid) = [];
 Y_nsamp_pid = Y_nsamp(pid,:);
 Y_nsamp_npid = Y_nsamp(npid,:);
 Rpp = Y_nsamp_pid*Y_nsamp_pid';

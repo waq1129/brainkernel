@@ -44,8 +44,8 @@ def rbf_covariance(kernel_params, diffs2):
     lengthscales = np.exp(kernel_params[1:])
     return output_scale * np.exp(-0.5 * diffs2/lengthscales/lengthscales)
 
-def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
-    print(taskname, method, rid, nf, ld_flag, nfold, rflag, subid, flush=True)
+def run(taskname, method, rid, nf, nfold, rflag, subid, coeff):
+    print(taskname, method, rid, nf, nfold, rflag, subid, coeff, flush=True)
     dataset = 'hcp'
 
     np.random.seed(0)
@@ -57,7 +57,7 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
     print(xgrid.shape, flush=True)
     print(X.shape, flush=True)
 
-    FF = scipy.io.loadmat('../brainkernel/brainkernel_prior.mat')
+    FF = scipy.io.loadmat('../brainkernel/brainkernel_latent.mat')
     F = FF['F']
     print(F.shape)
 
@@ -144,18 +144,30 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
     tra = trx/nd
     Cd1 = Cd/tra
 
-    ep = np.mean(np.diag(Cd/(nt-1))-1)
-    def runC(x_len, ld_flag):
+    # low rank approximation to the covariance when data is small
+    X_train1 = X_train.T
+    u,s,vh = np.linalg.svd(X_train1)
+    cs = np.cumsum((s))
+    cs = cs/np.max(cs)
+    csii = np.where(cs<0.1)[0]
+    vc = vh[csii,:]
+    vc = vc[:,csii]
+    x_train1 = u[:,csii].dot( np.diag(s[csii]).dot(vc.T))
+    x_train2 = scipy.stats.zscore(x_train1.T).T
+    covX = np.cov(x_train2)
 
+    ep = np.mean(np.diag(Cd/(nt-1))-1)
+    def runC(x_len):
         kx_params = [0,x_len]
         K = rbf_covariance(kx_params, diffs2)
-        Kinv = np.linalg.inv(K+ep*np.eye(K.shape[0]))
-        if ld_flag:
+        ep = 1
+        dd = 100000
+        try:
+            Kinv = np.linalg.inv(K+ep*np.eye(K.shape[0]))
             K_L = np.linalg.cholesky(K+ep*np.eye(K.shape[0]))
-            dd = np.trace(Cd1.dot(Kinv)) + 2.0 * np.sum(np.log(np.diag(K_L)))
-        else:
-            dd = np.trace(Cd1.dot(Kinv))
-
+            dd = np.trace((covX+ep*np.eye(K.shape[0])).dot(Kinv)) + 2.0 * np.sum(np.log(np.diag(K_L)))
+        except:
+            dd = 100000
         return dd
 
     if method=='ridge':
@@ -164,7 +176,7 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
         xlenlist = np.linspace(-5,3,60)
         lls = []
         for xl in xlenlist:
-            nll = runC(xl, ld_flag)
+            nll = runC(xl)
             print('xl',xl,' nll', nll,flush=True)
             lls += [nll]
         xl_min = xlenlist[np.argmin(lls)]
@@ -252,7 +264,7 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
 
             l2 = 0.5*LL_ld
 
-            l3 = 0.5*torch.trace(torch.matmul(torch.matmul(L.t(),Kinv),L))
+            l3 = 0.5*torch.trace(torch.matmul(torch.matmul(L.t(),Kinv),L))*coeff
 
             ll = l1+l2+l3
             return ll, l1, l2, l3
@@ -282,10 +294,7 @@ def run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid):
     cov_r2 = 0
     x_r2 = 0
     for epoch in range(epochs):
-        if epoch<20:
-            loss_train = optimizer1.step(closure1)
-        else:
-            loss_train = optimizer1.step(closure1)
+        loss_train = optimizer1.step(closure1)
 
         if np.mod(epoch,1)==0:
             ll_u += [loss_train.item()]
@@ -322,15 +331,15 @@ taskname = 'WM' # working memory task
 method = 'bk' # ridge, se, bk
 subid = 0 # index of subject
 
-ld_flag = 0
 nf = 30 # number of latent dimension in factor modeling
 nfold = 2 # nfold cross validation
 rid = 0 # index of split, when nfold=2, rid=[0,1]
 rflag = 0 # randomness
+coeff = 1000 # coefficient to amplify the prior
 
-print('taskname: ', taskname, ' method: ', method, ' rid: ', rid, ' nf: ', nf, ' ld_flag: ', ld_flag, ' nfold: ', nfold, ' rflag: ', rflag, ' subid: ', subid, flush=True)
+print('taskname: ', taskname, ' method: ', method, ' rid: ', rid, ' nf: ', nf, ' nfold: ', nfold, ' rflag: ', rflag, ' subid: ', subid, ' coeff: ', coeff, flush=True)
 
-r2s = run(taskname, method, rid, nf, ld_flag, nfold, rflag, subid)
+r2s = run(taskname, method, rid, nf, nfold, rflag, subid, coeff)
 cov_r2, x_r2, x_len = r2s[0], r2s[1], r2s[2] # cov_r2: r2 between test sample cov and predicted cov; x_r2: r2 between test x and predicted x
 
 

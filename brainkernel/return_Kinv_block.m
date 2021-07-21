@@ -1,7 +1,7 @@
-function [Kinv11, Kinv21] = return_Kinv_block(len_k,xgrid,pid,large_flag,sp_flag,max_unit)
+function [Kinv11, Kinv21] = return_Kinv_block(len_k,xgrid,pid,npid,large_flag,sp_flag,max_unit)
 [nx,nc] = size(xgrid);
 np = length(pid);
-npid = 1:nx; npid(pid) = [];
+% npid = 1:nx; npid(pid) = [];
 nnp = length(npid);
 nn = 1e-6;
 len_k = exp(-len_k/2);

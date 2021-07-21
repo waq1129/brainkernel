@@ -148,7 +148,7 @@ for kk=1:k
     
     for ii = 1:length(llist)
         display(['se, fold=' num2str(kk) ', ii=' num2str(ii)])
-        covfun = @(x,y) covSEiso_curv(log([llist(ii);1]),x,y,0,1,0);
+        covfun = @(x,y) covSEiso_deriv(log([llist(ii);1]),x,y,0,1);
         if kk==1
             [Klx,Klx1] = cov_block_mult_x(xgrid, x_train0', covfun, groupsize, x_train');
         else
@@ -159,8 +159,6 @@ for kk=1:k
             % w = (x_train'*x_train+Kinv)\(x_train'*y_train);
             Kx = Klx;
             xKx = x_train0*Kx;
-            %             aa = eye(size(x_train0,1))+xKx;
-            %             w = Kx*((aa+1e-8*eye(size(aa))*max(diag(aa)))\(y_train0));
             w = Kx*((eye(size(x_train0,1))/rlist(jj)^2+xKx)\(y_train0));
             y_train_pred = sign(x_train0*w);
             y_valid_pred = sign(x_valid0*w);
@@ -201,7 +199,7 @@ acc_test2 = max(acc_test20)
 
 
 %% bk
-load ../brainkernel/brainkernel_prior.mat
+load ../brainkernel/brainkernel_latent.mat
 F_bk = F(logical(mask),:);
 rlist = exp(linspace(-10,10,nll));
 llist = exp(linspace(-5,5,nll));
@@ -225,7 +223,7 @@ for kk=1:k
     
     for ii = 1:length(llist)
         display(['se, fold=' num2str(kk) ', ii=' num2str(ii)])
-        covfun = @(x,y) covSEiso_curv(log([llist(ii);1]),x,y,0,1,0);
+        covfun = @(x,y) covSEiso_deriv(log([llist(ii);1]),x,y,0,1);
         if kk==1
             [Klx,Klx1] = cov_block_mult_x(F_bk, x_train0', covfun, groupsize, x_train');
         else
@@ -236,8 +234,6 @@ for kk=1:k
             % w = (x_train'*x_train+Kinv)\(x_train'*y_train);
             Kx = Klx;
             xKx = x_train0*Kx;
-            %             aa = eye(size(x_train0,1))+xKx;
-            %             w = Kx*((aa+1e-8*eye(size(aa))*max(diag(aa)))\(y_train0));
             w = Kx*((eye(size(x_train0,1))/rlist(jj)^2+xKx)\(y_train0));
             y_train_pred = sign(x_train0*w);
             y_valid_pred = sign(x_valid0*w);

@@ -4,47 +4,73 @@
 % or the second matrix is empty, the missing matrix is taken to be identical
 % to the first.
 %
+% Special functionality: If an optional third matrix argument Q is given, it
+% must be of size n by m, and in this case a vector of the traces of the
+% product of Q' and the coordinatewise squared distances is returned.
+%
+% NOTE: The program code is written in the C language for efficiency and is
+% contained in the file sq_dist.c, and should be compiled using matlabs mex
+% facility. However, this file also contains a (less efficient) matlab
+% implementation, supplied only as a help to people unfamiliar with mex. If
+% the C code has been properly compiled and is avaiable, it automatically
+% takes precendence over the matlab code in this file.
+%
 % Usage: C = sq_dist(a, b)
 %    or: C = sq_dist(a)  or equiv.: C = sq_dist(a, [])
+%    or: c = sq_dist(a, b, Q)
+% where the b matrix may be empty.
 %
-% Where a is of size Dxn, b is of size Dxm (or empty), C is of size nxm.
+% where a is of size D by n, b is of size D by m (or empty), C and Q are of
+% size n by m and c is of size D by 1.
 %
-% Copyright (c) by Carl Edward Rasmussen and Hannes Nickisch, 2010-12-13.
+% Copyright (c) 2003, 2004, 2005 and 2006 Carl Edward Rasmussen. 2006-03-09.
 
-function C = sq_dist(a, b)
+function C = sq_dist(a, b, Q);
 
-if nargin<1  || nargin>3 || nargout>1, error('Wrong number of arguments.'); end
-bsx = exist('bsxfun','builtin');      % since Matlab R2007a 7.4.0 and Octave 3.0
-if ~bsx, bsx = exist('bsxfun'); end      % bsxfun is not yet "builtin" in Octave
+if nargin < 1 | nargin > 3 | nargout > 1
+    error('Wrong number of arguments.');
+end
+
+if nargin == 1 | isempty(b)                   % input arguments are taken to be
+    b = a;                                   % identical if b is missing or empty
+end
+
 [D, n] = size(a);
-
-% Computation of a^2 - 2*a*b + b^2 is less stable than (a-b)^2 because numerical
-% precision can be lost when both a and b have very large absolute value and the
-% same sign. For that reason, we subtract the mean from the data beforehand to
-% stabilise the computations. This is OK because the squared error is
-% independent of the mean.
-if nargin==1                                                     % subtract mean
-  mu = mean(a,2);
-  if bsx
-    a = bsxfun(@minus,a,mu);
-  else
-    a = a - repmat(mu,1,size(a,2));  
-  end
-  b = a; m = n;
-else
-  [d, m] = size(b);
-  if d ~= D, error('Error: column lengths must agree.'); end
-  mu = (m/(n+m))*mean(b,2) + (n/(n+m))*mean(a,2);
-  if bsx
-    a = bsxfun(@minus,a,mu); b = bsxfun(@minus,b,mu);
-  else
-    a = a - repmat(mu,1,n);  b = b - repmat(mu,1,m);
-  end
+[d, m] = size(b);
+if d ~= D
+    error('Error: column lengths must agree.');
 end
 
-if bsx                                               % compute squared distances
-  C = bsxfun(@plus,sum(a.*a,1)',bsxfun(@minus,sum(b.*b,1),2*a'*b));
+if nargin < 3
+    %         C = zeros(n,m);
+    %         for d = 1:D
+    %             C = C + (repmat(b(d,:), n, 1) - repmat(a(d,:)', 1, m)).^2;
+    %         end
+    patterns1 = a';
+    patterns2 = b';
+    size1=size(patterns1);
+    size2=size(patterns2);
+    
+    %new vectorised version
+    
+    G = sum((patterns1.*patterns1),2);
+    H = sum((patterns2.*patterns2),2);
+    
+    Q = repmat(G,1,size2(1));
+    R = repmat(H',size1(1),1);
+    
+    C = Q + R - 2*patterns1*patterns2';
+    
+    % C = repmat(sum(a.*a)',1,m)+repmat(sum(b.*b),n,1)-2*a'*b;% could be used to
+    % replace the 3 lines above; it would be faster, but numerically less stable.
 else
-  C = repmat(sum(a.*a,1)',1,m) + repmat(sum(b.*b,1),n,1) - 2*a'*b;
+    if [n m] == size(Q)
+        %         C = zeros(D,1);
+        %         for d = 1:D
+        %             C(d) = sum(sum((repmat(b(d,:), n, 1) - repmat(a(d,:)', 1, m)).^2.*Q));
+        %         end
+        C = sum(b.^2.*repmat(sum(Q,1),D,1),2)+sum(a'.^2.*repmat(sum(Q,2),1,D),1)'-2*diag(a*Q*b');
+    else
+        error('Third argument has wrong size.');
+    end
 end
-C = max(C,0);          % numerical noise can cause C to negative i.e. C > -1e-14
